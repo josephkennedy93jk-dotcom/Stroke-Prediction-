@@ -19,7 +19,7 @@
 
 Most stroke-prediction projects stop at *"predict who will have a stroke."* This one asks the harder, clinically useful question: **for each patient, which intervention lowers their risk most, and by how much?**
 
-Please read the accompanying presentation for the project: [Stroke Predictive Analysis](Project%20Presentation/Stroke%20Predictive%20Analysis.pptx)
+Please read the accompanying presentation for the project: | Project presentation | [Stroke Predictive Analysis.pdf](Project%20Presentation/Stroke%20Predictive%20Analysis.pdf) |
 
 Built on the Kaggle Healthcare Stroke dataset (5,110 patients × 12 features, ~5% positive class), the pipeline delivers a full analytics stack end-to-end:
 
