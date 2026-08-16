@@ -1,52 +1,173 @@
-# From Prediction to Prescription: A Stroke Risk Analytics Pipeline
+<h1 align="center">Stroke Risk Analytics — From Prediction to Prescription</h1>
 
-**One-line pitch:** Most stroke projects stop at "predict who will have a stroke." This one asks the harder question — *for each patient, which intervention lowers their risk most, and by how much?*
+<p align="center">
+  <em>A full analytics stack — Descriptive → Predictive → Prescriptive — asking not just <strong>who</strong> is at risk, but <strong>what to do about it</strong>.</em>
+</p>
 
-A full analytics stack — **Descriptive → Predictive → Prescriptive** — built on the Kaggle Healthcare Stroke dataset (5,110 patients × 12 features, ~5% positive class).
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square"/>
+  <img src="https://img.shields.io/badge/scikit--learn-Modelling-F7931E?style=flat-square"/>
+  <img src="https://img.shields.io/badge/XGBoost-Gradient%20Boosting-EB6E4B?style=flat-square"/>
+  <img src="https://img.shields.io/badge/Explainability-SHAP-6C4CB4?style=flat-square"/>
+  <img src="https://img.shields.io/badge/Calibration-Platt%20Scaling-4479A1?style=flat-square"/>
+  <img src="https://img.shields.io/badge/Method-Counterfactual-brightgreen?style=flat-square"/>
+</p>
 
 ---
 
-## Dataset
+## 1. About This Project
 
-- **Source:** [Kaggle Healthcare Stroke Dataset](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset)
-- **Rows:** 5,110 patients
-- **Target:** `stroke` (binary — 1 = had a stroke, 0 = did not)
-- **Class balance:** ~4.9% positive → heavily imbalanced (a real-world modelling problem, not a toy dataset)
-- **Features:** `gender`, `age`, `hypertension`, `heart_disease`, `ever_married`, `work_type`, `Residence_type`, `avg_glucose_level`, `bmi`, `smoking_status`
+Most stroke-prediction projects stop at *"predict who will have a stroke."* This one asks the harder, clinically useful question: **for each patient, which intervention lowers their risk most, and by how much?**
+
+Please read the accompanying presentation for the project: [Stroke Predictive Analysis](Project%20Presentation/Stroke%20Predictive%20Analysis.pptx)
+
+Built on the Kaggle Healthcare Stroke dataset (5,110 patients × 12 features, ~5% positive class), the pipeline delivers a full analytics stack end-to-end:
+
+- Cleaned the dataset with a group-wise BMI imputation strategy (not a naive column mean) and honest handling of edge cases
+- Profiled the population — dataset vs. stroke cohort — to build intuition before touching a model
+- Benchmarked four base models plus three ensembles on a stratified split, with class imbalance handled model by model
+- Calibrated the winning model with Platt scaling so the risk percentages actually mean what they say
+- Produced per-patient counterfactuals — "if hypertension were controlled, this patient's risk drops from X% to Y%" — and translated them into a natural-language advice string
 
 ---
 
-## 1. Clean
+## 2. The Business Question
+
+Stroke is the second-leading cause of death globally and a leading cause of adult disability. Screening programmes need to decide who to call in, and clinicians need to know which lever to pull for each patient. A binary "will they / won't they" prediction is not enough to support either decision.
+
+The analytics stack was designed to answer four questions:
+
+- **Who is at elevated risk?** — a per-patient probability that's actually calibrated, not just a ranking.
+- **Why are they at risk?** — feature-level attribution so the clinician can see the drivers, not just the score.
+- **What's the modifiable portion of their risk?** — separating age-driven risk (fixed) from lifestyle/comorbidity risk (actionable).
+- **Which intervention should be prioritised for this patient?** — a ranked, patient-specific action list, not a generic guideline.
+
+Everything that follows is organised around answering those four questions in order.
+
+---
+
+## 3. Executive Summary
+
+Age dominates stroke risk in the dataset, but the modifiable portion — hypertension, heart disease, glucose, BMI, smoking — is where the analytics stack adds value. Calibrated per-patient risk scores plus counterfactual "what if" modelling produce a ranked intervention list for every patient in the sample, banded from Green (Low) to Red (Very High).
+
+The stack shifts the framing of the problem from *"predict stroke"* to *"prescribe the intervention that lowers this patient's risk the most" — a screening and triage tool clinicians can act on.
+
+<p align="center">
+  <img src="Project%20Images/stroke%20victim%20distribution.png" alt="Stroke Victim Distribution" width="720">
+</p>
+
+| Metric | Value |
+|---|---|
+| Patients in analytical base | 5,110 |
+| Baseline stroke rate | ~4.9% (heavily imbalanced) |
+| Base models benchmarked | 4 (Logistic · XGBoost · Random Forest · Naive Bayes) |
+| Ensembles benchmarked | 3 (Voting equal · Voting AUC-weighted · Stacking) |
+| Prescriptive layer | Calibrated risk % + risk band + counterfactual advice per patient |
+
+---
+
+## 4. Key Findings
+
+The analysis surfaced five findings that shaped the prescriptive layer.
+
+- **Age dominates — but that's not the whole story.** Stroke incidence climbs sharply after ~55 and heavily concentrates 65+. Any model that scores patients by risk is largely scoring by age unless the modifiable component is isolated.
+- **Comorbidity is a force multiplier.** Patients with hypertension *and* heart disease are massively over-represented in the stroke cohort relative to their base rate. These are the highest-leverage intervention targets.
+- **Glucose has a long right tail.** Stroke victims show elevated `avg_glucose_level` — the diabetic and pre-diabetic ranges are visibly enriched, consistent with the metabolic-vascular pathway.
+- **Smoking status is a noisy signal.** The `Unknown` category is large enough to confound interpretation; the signal is real but weaker than the population narrative suggests.
+- **Probabilities need calibration, not just ranking.** Class weighting inflates raw probabilities. Wrapping the model in `CalibratedClassifierCV` (Platt scaling) is what makes a "15% risk" mean 15% observed stroke rate in that decile — the requirement for a prescriptive layer.
+
+---
+
+## 5. Recommendations to Clinical & Screening Programme Leadership
+
+The following recommendations are drawn from the findings above and are intended as strategic areas to explore for a screening or preventative programme built on this style of analytics.
+
+### 1. Frame the model as a screening tool, not a diagnostic
+At a ~5% base rate, high recall inevitably means low precision — this model flags candidates for follow-up, not people to treat. Communicate that framing explicitly to clinicians and patients from day one.
+
+### 2. Prioritise the modifiable-risk view over the raw risk score
+Because age dominates, raw risk scores concentrate on the elderly by default. The counterfactual layer (see Section 10) isolates the actionable portion. That view should be the front page of any clinician-facing dashboard, not an appendix.
+
+### 3. Target hypertension and heart disease as the two highest-leverage levers
+Both features are massively over-represented in the stroke cohort. Standard-of-care management of these two conditions is where the counterfactual analysis suggests the greatest per-patient risk reduction can be achieved.
+
+### 4. Treat glucose management as the third pillar
+The right-tail concentration on `avg_glucose_level` supports integrating diabetic and pre-diabetic screening with the stroke-risk workflow rather than running them as separate programmes.
+
+### 5. Insist on calibrated probabilities before any clinical use
+An uncalibrated model that ranks well but reports "80% risk" for a patient with a true 20% risk is dangerous in a screening context. Platt scaling (or isotonic regression) is a non-negotiable step, not an optional one.
+
+### 6. Communicate risk in bands, not numbers
+Patients and non-specialist staff read Green / Yellow / Orange / Red faster than they read percentages. The banding structure (see Section 11) is designed for exactly that.
+
+### 7. Validate externally before deployment
+Every result here comes from a single dataset. Before any real-world use, results should be re-checked on a held-out cohort from a different source, with fairness audits across gender and age groups.
+
+### Areas to explore further
+Deeper investigation is warranted in three areas: adding richer clinical features (cholesterol, blood pressure numeric, medication history), formalising the counterfactuals as causal estimates rather than model-implied deltas, and testing the intervention rankings against clinician judgement on a labelled sample.
+
+---
+
+## 6. Data Foundation
+
+The analysis draws on the Kaggle Healthcare Stroke dataset — one row per patient, covering demographics, clinical comorbidities, lifestyle factors and stroke outcome.
+
+**Scope**
+- 5,110 patient records
+- Target: `stroke` (binary — 1 = had a stroke, 0 = did not)
+- Class balance: ~4.9% positive — a genuinely imbalanced real-world problem
+- Features: `gender`, `age`, `hypertension`, `heart_disease`, `ever_married`, `work_type`, `Residence_type`, `avg_glucose_level`, `bmi`, `smoking_status`
+
+**Source:** [Kaggle Healthcare Stroke Dataset](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset)
+
+Raw source data: [healthcare-dataset-stroke-data.csv](Raw%20CSV%20Data/healthcare-dataset-stroke-data.csv)
+
+<p align="center">
+  <img src="Project%20Images/distribution%20of%20columns.png" alt="Distribution of columns across the dataset" width="820">
+</p>
+
+---
+
+## 7. Data Cleaning & Preparation
+
+Data-quality treatment was deliberate rather than defaulted — the imputation strategy matters more than the model for a dataset this size.
 
 - **Duplicates:** 0 found.
 - **Missing values:** 201 nulls in `bmi` (~4% of the column).
-- **Imputation strategy:** Group-wise mean by `(gender, age)` — respects the fact that BMI varies systematically by both. Falls back to gender-only mean for any age × gender bucket that was fully missing (1 residual row).
+- **Imputation strategy:** group-wise mean by `(gender, age)` — respects the fact that BMI varies systematically by both. Falls back to gender-only mean for any age × gender bucket that was fully missing (1 residual row). Chosen over a naive column mean because it preserves the distributional structure the model needs to see.
 - **`Other` gender row:** 1 row dropped from modelling — sample too small to learn from without leaking.
 - **Encoding:**
   - Binary columns → 0/1 mapping (`gender`, `ever_married`, `Residence_type`)
   - Nominal columns → one-hot with `drop_first=True` (`work_type`, `smoking_status`)
-- **Scaling:** `StandardScaler` for linear / Naive Bayes models. Trees left unscaled — they don't care.
+- **Scaling:** `StandardScaler` for linear and Naive Bayes models. Trees left unscaled — they don't care.
 
 ---
 
-## 2. Explore
+## 8. Exploratory & Descriptive Analysis
 
-The EDA phase profiles who ends up in the stroke cohort vs. the general population — the goal is to build intuition before touching a model.
+The exploratory phase profiles who ends up in the stroke cohort vs. the general population — the goal is to build intuition before touching a model.
 
-Charts included in `Healthcare_dataset_exploratory_&_Descriptive.ipynb`:
+<p align="center">
+  <img src="Project%20Images/male%20female%20pie%20charts.png" alt="Gender distribution — dataset vs. stroke cohort" width="720">
+</p>
 
-- **Gender distribution** — dataset vs. stroke victims (pie charts, count + %).
-- **Age distribution** — 5-year bins, KDE overlay, dataset vs. stroke victims side by side. This is where the age signal jumps out.
-- **Youngest / oldest stroke victims** — sanity check on outliers (a 1.32-year-old shows up — real data is messy).
-- **Categorical features** (`ever_married`, `work_type`, `Residence_type`, `smoking_status`) — count plots, dataset vs. stroke cohort.
-- **Numerical features** (`avg_glucose_level`, `bmi`) — histograms with KDE.
-- **Comorbidity totals** — total counts of hypertension, heart disease, and stroke across the sample.
+<p align="center">
+  <img src="Project%20Images/stroke%20to%20age%20etc.png" alt="Age distribution — stroke vs. general" width="820">
+</p>
 
----
+<p align="center">
+  <img src="Project%20Images/glucose%20and%20bmi.png" alt="Glucose and BMI distributions" width="820">
+</p>
 
-## 3. Descriptive
+<p align="center">
+  <img src="Project%20Images/health%20conditions%20in%20sample.png" alt="Comorbidity totals across the sample" width="720">
+</p>
 
-Population-level takeaways surfaced by the EDA:
+<p align="center">
+  <img src="Project%20Images/more%20distributions.png" alt="Categorical feature distributions" width="820">
+</p>
+
+**Population-level takeaways**
 
 - **Age dominates.** Stroke incidence rises sharply after ~55 and heavily concentrates 65+.
 - **Comorbidity matters.** Patients with hypertension *and* heart disease are massively over-represented in the stroke cohort relative to their base rate.
@@ -54,18 +175,13 @@ Population-level takeaways surfaced by the EDA:
 - **Smoking status is not a clean signal.** "Unknown" is a large category and confounds interpretation.
 - **Gender is roughly balanced** among stroke cases despite males being slightly under-represented in the dataset.
 
+Notebook: [Healthcare_dataset_exploratory_&_Descriptive.ipynb](Python%20Files/Healthcare_dataset_exploratory_%26_Descriptive.ipynb)
+
 ---
 
-## 4. Predictive
+## 9. Predictive Modelling & Performance
 
-Four base models + three ensembles, benchmarked head-to-head on a stratified 75/25 train/test split.
-
-**Class imbalance handling:**
-- Linear / RF / NB → `class_weight='balanced'` or equal priors
-- XGBoost → `scale_pos_weight = neg / pos`
-- Naive Bayes → `priors=[0.5, 0.5]`
-
-### Models
+Four base models and three ensembles, benchmarked head-to-head on a stratified 75/25 train/test split. Class imbalance is handled per model — `class_weight='balanced'` for linear / RF, `scale_pos_weight = neg / pos` for XGBoost, `priors=[0.5, 0.5]` for Naive Bayes.
 
 | Model | Why it's here |
 |---|---|
@@ -77,47 +193,70 @@ Four base models + three ensembles, benchmarked head-to-head on a stratified 75/
 | **Voting (AUC-weighted)** | Performance-weighted average — heavier weight on stronger models. |
 | **Stacking** | Meta-learner (logistic) trained on cross-validated base-model predictions. |
 
-### Evaluation stack
+**Evaluation stack applied to every model:** ROC + AUC, Precision-Recall + Average Precision (more informative than ROC under 5% base rate), confusion matrix, predicted-probability distribution by true class, calibration curve + Brier score.
 
-For every model:
+**Logistic Regression**
 
-- **ROC curve + AUC**
-- **Precision-Recall curve + Average Precision** (more informative than ROC under 5% base rate)
-- **Confusion matrix**
-- **Predicted probability distribution by true class** — visual separation quality
-- **Calibration curve + Brier score** — how honest are the probabilities?
+<p align="center">
+  <img src="Project%20Images/logistic%20metrics.png" alt="Logistic regression metrics" width="820">
+</p>
 
-Model-specific charts:
+<p align="center">
+  <img src="Project%20Images/logistic%20regression%20factors.png" alt="Logistic regression standardised coefficients" width="820">
+</p>
 
-- **Logistic:** standardised coefficient bar chart (red = raises risk, blue = lowers) + odds ratios.
-- **XGBoost:** feature importance + full **SHAP summary** (dot + bar).
-- **Random Forest:** feature importance with std bars across 500 trees + **partial dependence plots** for `age`, `avg_glucose_level`, `bmi`, `hypertension` (the functional-form chart).
-- **Naive Bayes:** the model's *assumed* Gaussians overlaid on the actual per-feature distributions — literally shows where NB's worldview breaks.
-- **Ensembles:** head-to-head ROC + PR overlay, leaderboard bar chart, calibration comparison.
+**XGBoost**
+
+<p align="center">
+  <img src="Project%20Images/xg%20boost%20metrics.png" alt="XGBoost metrics" width="820">
+</p>
+
+<p align="center">
+  <img src="Project%20Images/xg%20boost%20features%20imp.png" alt="XGBoost feature importance + SHAP" width="820">
+</p>
+
+**Random Forest**
+
+<p align="center">
+  <img src="Project%20Images/random%20forrest%20metrics.png" alt="Random Forest metrics" width="820">
+</p>
+
+**Naive Bayes**
+
+<p align="center">
+  <img src="Project%20Images/naive%20bayes%20performance.png" alt="Naive Bayes performance with Gaussian overlay" width="820">
+</p>
+
+**Ensembles**
+
+<p align="center">
+  <img src="Project%20Images/ensemble%20scores%20predict.png" alt="Ensemble ROC + PR overlay and leaderboard" width="820">
+</p>
+
+Notebook: [Healthcare_dataset_predictive_analytics.ipynb](Python%20Files/Healthcare_dataset_predictive_analytics.ipynb)
 
 ---
 
-## 5. Prescriptive
+## 10. Prescriptive Layer — Calibrated Risk & Counterfactuals
 
 This is the layer that separates the project from a standard Kaggle notebook.
 
-### Calibrated risk scoring
+**Calibrated risk scoring**
 
-- Base model: logistic regression with `class_weight='balanced'` (chosen for interpretability + strong ranking).
+- Base model: logistic regression with `class_weight='balanced'` (chosen for interpretability and strong ranking).
 - Wrapped in `CalibratedClassifierCV(method='sigmoid', cv=5)` — Platt scaling corrects the inflated probabilities from class weighting back to reality.
 - Scores generated via `cross_val_predict` — every patient scored by a model that didn't see them during training.
 - **Result:** predicted `stroke_risk_%` where a 15% risk actually corresponds to ~15% observed stroke rate in that decile.
 
-### Risk banding
+<p align="center">
+  <img src="Project%20Images/prescriptive%20predicted%20stroke%20risk.png" alt="Prescriptive predicted stroke risk" width="820">
+</p>
 
-| Band | Threshold | Colour |
-|---|---|---|
-| Green (Low) | < 2% | 🟢 |
-| Yellow (Moderate) | 2 – 5% | 🟡 |
-| Orange (High) | 5 – 15% | 🟠 |
-| Red (Very High) | > 15% | 🔴 |
+<p align="center">
+  <img src="Project%20Images/predicted%20vs%20actual%20stroke%20risk%20prescriptive.png" alt="Predicted vs actual stroke risk" width="820">
+</p>
 
-### Counterfactual interventions
+**Counterfactual interventions**
 
 For each patient the pipeline runs a set of **what-if scenarios** through the fitted model:
 
@@ -130,20 +269,58 @@ For each patient the pipeline runs a set of **what-if scenarios** through the fi
 
 Each scenario returns the new risk %, the absolute change (pp), and the relative reduction (%).
 
-### Per-patient outputs
+**Per-patient outputs**
 
 - Individual **SHAP waterfall charts** (P&L attribution-style — red bars raise risk, blue lower) for representative patients across Green / Yellow / Orange / Red bands, including a true-positive and a false-positive in the Red band.
 - A natural-language `prescriptive_advice` string attached to every row: risk profile + ranked recommended actions + combined-intervention outcome.
 
-### Deliverables
-
-- `stroke_data_with_prescriptive_advice.csv` — full scored dataset with risk % + band + advice text.
-- `stroke_data_with_prescriptive_advice.xlsx` — same, with conditional formatting on the band column and a 3-colour scale on the risk % column.
-- Population-level chart: number of patients addressable by each intervention.
+Notebook: [Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb](Python%20Files/Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb)
 
 ---
 
-## Limitations
+## 11. Risk Banding & Patient Communication
+
+Every patient is placed into a risk band based on their calibrated stroke probability. Bands drive both the clinical playbook and the patient-facing communication tone.
+
+| Band | Threshold | Programme role |
+|---|---|---|
+| Green (Low) | < 2% | Monitor at routine cadence |
+| Yellow (Moderate) | 2 – 5% | Lifestyle counselling + annual review |
+| Orange (High) | 5 – 15% | Active management of comorbidities + 6-month review |
+| Red (Very High) | > 15% | Priority clinical review + counterfactual-guided intervention plan |
+
+<p align="center">
+  <img src="Project%20Images/stroke%20risk%20distribution%20prescriptive.png" alt="Stroke risk distribution across bands" width="820">
+</p>
+
+<p align="center">
+  <img src="Project%20Images/red%20band%20patient%20breakdown.png" alt="Red-band patient breakdown" width="820">
+</p>
+
+**Patient-facing risk alert concept**
+
+<p align="center">
+  <img src="Project%20Images/Pateint%20app%20stroke%20risk%20alert%20.png" alt="Patient app stroke risk alert concept" width="720">
+</p>
+
+A patient-facing alert format built on the same banding — the point being that a calibrated probability plus a ranked action list can be delivered to the patient directly, not just the clinician.
+
+---
+
+## 12. Recommended Clinical Playbook
+
+| Band | Treatment | Expected effect |
+|---|---|---|
+| **Red (Very High)** | Priority clinician review · counterfactual-guided intervention plan (hypertension, heart disease, glucose, BMI, smoking, in ranked order per patient) · 30-day follow-up | Address the highest-leverage modifiable levers first for the patients with the most room to move |
+| **Orange (High)** | Active management of comorbidities · lifestyle counselling · six-month review · re-score on next data refresh | Efficient, scalable intervention on the mid-risk segment where the calibrated probability is meaningfully above baseline |
+| **Yellow (Moderate)** | Lifestyle counselling · annual review · patient-facing app alert with modifiable-risk education | Prevent tier-drift into Orange; maintain engagement |
+| **Green (Low)** | Routine monitoring · population-level messaging | Standard care with no additional cost |
+
+---
+
+## 13. Limitations
+
+Analytical honesty — the failure modes worth naming explicitly.
 
 - **Screening tool, not a diagnostic.** With a ~5% base rate, high recall comes at the cost of precision at every threshold. This model flags candidates for follow-up; it does not diagnose.
 - **Observational data.** Counterfactuals ("if hypertension were controlled") are *model-implied* risk reductions, not causal estimates. A patient with hypertension differs from a patient without it in many unobserved ways.
@@ -155,57 +332,39 @@ Each scenario returns the new risk %, the absolute change (pp), and the relative
 
 ---
 
-## Tools used
+## 14. Deliverables
 
-**Language & environment**
-- Python 3 (Google Colab)
-- Jupyter notebooks
+The tangible outputs of the engagement, each linked below:
 
-**Core data**
-- `pandas` — data wrangling
-- `numpy` — numerics
-
-**Modelling**
-- `scikit-learn` — logistic regression, random forest, naive bayes, `StandardScaler`, `train_test_split`, `CalibratedClassifierCV`, `cross_val_predict`, `VotingClassifier`, `StackingClassifier`, metrics, `PartialDependenceDisplay`
-- `xgboost` — gradient boosting
-- `shap` — model explainability (linear + tree explainers)
-
-**Visualisation**
-- `matplotlib`
-- `seaborn`
-
-**Output / export**
-- `xlsxwriter` — styled Excel export with conditional formatting
+| Deliverable | File |
+|---|---|
+| Project presentation | [Stroke Predictive Analysis.pptx](Project%20Presentation/Stroke%20Predictive%20Analysis.pptx) |
+| Exploratory & descriptive notebook | [Healthcare_dataset_exploratory_&_Descriptive.ipynb](Python%20Files/Healthcare_dataset_exploratory_%26_Descriptive.ipynb) |
+| Predictive modelling notebook | [Healthcare_dataset_predictive_analytics.ipynb](Python%20Files/Healthcare_dataset_predictive_analytics.ipynb) |
+| Prescriptive analytics notebook | [Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb](Python%20Files/Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb) |
+| Scored patient file (CSV) | [stroke_data_with_prescriptive_advice.csv](Raw%20CSV%20Data/stroke_data_with_prescriptive_advice.csv) |
+| Scored patient file (styled Excel) | [stroke_data_with_prescriptive_advice.xlsx](Raw%20CSV%20Data/stroke_data_with_prescriptive_advice.xlsx) |
+| Raw source data | [healthcare-dataset-stroke-data.csv](Raw%20CSV%20Data/healthcare-dataset-stroke-data.csv) |
 
 ---
 
-## Repo structure
+## 15. What I'd Do Next
 
-```
-stroke prediction project/
-├── README.md                                             ← this file
-├── healthcare-dataset-stroke-data.csv                    ← raw input
-├── Healthcare_dataset_exploratory_&_Descriptive.ipynb    ← 1. Clean + 2. Explore + 3. Descriptive
-├── Healthcare_dataset_predictive_analytics.ipynb         ← 4. Predictive (4 models + 3 ensembles)
-├── Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb ← 5. Prescriptive (calibrated + counterfactual)
-├── stroke_data_with_prescriptive_advice.csv              ← final scored output
-└── stroke_data_with_prescriptive_advice.xlsx             ← styled Excel version
-```
+Given more time or a follow-up engagement, five extensions would materially strengthen the stack:
+
+- **Add richer clinical features** — cholesterol, blood pressure numeric, medication history, imaging findings. The current feature set is the ceiling on how much this model can improve.
+- **Move counterfactuals from model-implied to causal** — propensity-score matching or a double-machine-learning approach would let intervention effects be estimated rather than assumed.
+- **External validation on a different cohort** — the single-dataset caveat is the biggest barrier to real-world use.
+- **Fairness audit** — subgroup performance across gender, age band, and work type before any deployment.
+- **Serve the model behind a clinician-facing tool** — a lightweight app that takes patient input, returns the calibrated risk, the band, the SHAP waterfall and the ranked intervention list in one view. The patient-alert mockup in Section 11 is the starting point.
 
 ---
 
-## How to run
+## 16. Author
 
-1. Clone the repo.
-2. Install dependencies:
-   ```bash
-   pip install pandas numpy scikit-learn xgboost shap matplotlib seaborn xlsxwriter
-   ```
-3. Open the notebooks in order:
-   - `Healthcare_dataset_exploratory_&_Descriptive.ipynb`
-   - `Healthcare_dataset_predictive_analytics.ipynb`
-   - `Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb`
-4. Update the file paths in the first cells if you're running locally instead of Colab.
+**Joseph Kennedy** — Data Analyst
 
----
+End-to-end delivery: data cleaning and imputation, exploratory analysis, predictive modelling (logistic, XGBoost, random forest, naive bayes, voting and stacking ensembles), probability calibration, per-patient counterfactuals, SHAP explainability, and stakeholder communication.
+
+<sub>Built on the publicly available Kaggle Healthcare Stroke dataset (5,110 patients). Results have not been externally validated and are for analytical demonstration only — not clinical use.</sub>
 
