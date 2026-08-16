@@ -338,7 +338,7 @@ The tangible outputs of the engagement, each linked below:
 
 | Deliverable | File |
 |---|---|
-| Project presentation | [Stroke Predictive Analysis.pptx](Project%20Presentation/Stroke%20Predictive%20Analysis.pptx) |
+| Project presentation | [Stroke Predictive Analysis.pdf](Project%20Presentation/Stroke%20Predictive%20Analysis.pdf) |
 | Exploratory & descriptive notebook | [Healthcare_dataset_exploratory_&_Descriptive.ipynb](Python%20Files/Healthcare_dataset_exploratory_%26_Descriptive.ipynb) |
 | Predictive modelling notebook | [Healthcare_dataset_predictive_analytics.ipynb](Python%20Files/Healthcare_dataset_predictive_analytics.ipynb) |
 | Prescriptive analytics notebook | [Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb](Python%20Files/Copy_of_Healthcare_dataset_prescriptive_analytics.ipynb) |
